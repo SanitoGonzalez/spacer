@@ -1,0 +1,9 @@
+# rust
+/target
+
+# IDE
+.idea
+.vscode
+
+# app
+config.toml
