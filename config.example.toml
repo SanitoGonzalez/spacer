@@ -1,3 +1,6 @@
 [agent]
 kind = "codex"
 model = "gpt5.4-mini"
+
+[mcp]
+port = 6000

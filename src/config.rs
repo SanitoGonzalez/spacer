@@ -4,12 +4,14 @@ use serde::Deserialize;
 
 use crate::agent;
 use crate::error::Result;
+use crate::mcp;
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
     pub agent: agent::Config,
+    pub mcp: mcp::Config,
 }
 
 impl Config {
