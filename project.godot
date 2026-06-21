@@ -8,10 +8,14 @@
 
 config_version=5
 
+[autoload]
+
+AgentManager="*res://src/AI/AgentManager.cs"
+
 [application]
 
 config/name="Spacer"
-config/features=PackedStringArray("4.7", "Forward Plus")
+config/features=PackedStringArray("4.7", "C#", "Forward Plus")
 config/icon="res://icon.svg"
 
 [display]

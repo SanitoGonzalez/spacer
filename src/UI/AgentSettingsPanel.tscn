@@ -1,0 +1,110 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/UI/AgentSettingsPanel.cs" id="1_panel"]
+
+[node name="AgentSettingsPanel" type="PanelContainer"]
+custom_minimum_size = Vector2(440, 0)
+script = ExtResource("1_panel")
+
+[node name="Margin" type="MarginContainer" parent="."]
+layout_mode = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
+
+[node name="VBox" type="VBoxContainer" parent="Margin"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="Margin/VBox"]
+layout_mode = 2
+text = "Agent Settings"
+theme_type_variation = &"HeaderMedium"
+
+[node name="ProviderRow" type="HBoxContainer" parent="Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Label" type="Label" parent="Margin/VBox/ProviderRow"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+text = "Provider"
+
+[node name="ProviderOption" type="OptionButton" parent="Margin/VBox/ProviderRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ModelRow" type="HBoxContainer" parent="Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Label" type="Label" parent="Margin/VBox/ModelRow"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+text = "Model"
+
+[node name="ModelEdit" type="LineEdit" parent="Margin/VBox/ModelRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ApiKeyRow" type="HBoxContainer" parent="Margin/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Label" type="Label" parent="Margin/VBox/ApiKeyRow"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+text = "API Key"
+
+[node name="ApiKeyEdit" type="LineEdit" parent="Margin/VBox/ApiKeyRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+secret = true
+placeholder_text = "sk-…"
+
+[node name="RevealKey" type="CheckButton" parent="Margin/VBox/ApiKeyRow"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Show / hide the API key"
+
+[node name="BaseUrlRow" type="HBoxContainer" parent="Margin/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Label" type="Label" parent="Margin/VBox/BaseUrlRow"]
+custom_minimum_size = Vector2(110, 0)
+layout_mode = 2
+text = "Base URL"
+
+[node name="BaseUrlEdit" type="LineEdit" parent="Margin/VBox/BaseUrlRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "https://…"
+
+[node name="HintLabel" type="Label" parent="Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+text = "Keys are stored in plaintext in user://ai.cfg on this machine."
+autowrap_mode = 2
+
+[node name="StatusLabel" type="Label" parent="Margin/VBox"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+autowrap_mode = 2
+
+[node name="ButtonRow" type="HBoxContainer" parent="Margin/VBox"]
+layout_mode = 2
+alignment = 2
+
+[node name="ApplyButton" type="Button" parent="Margin/VBox/ButtonRow"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Save & Apply"
