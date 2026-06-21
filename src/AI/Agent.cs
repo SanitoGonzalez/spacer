@@ -1,5 +1,6 @@
-using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.AI;
@@ -7,52 +8,78 @@ using Microsoft.Extensions.AI;
 namespace Spacer.AI;
 
 /// <summary>
-/// A single NPC: persona + conversation history + the tools it can call.
-/// Reads the live client from its <see cref="AgentManager"/>, so a
-/// <see cref="AgentManager.Reconfigure"/> mid-game takes effect on the next step.
-/// Create instances via <see cref="AgentManager.CreateAgent"/>.
+/// An LLM-backed NPC: it is fed an observation, reasons, and acts by calling
+/// tools. Tool calls are auto-executed by the function-invocation middleware
+/// during <see cref="StepAsync"/>, which runs off the main thread — so action
+/// tools don't mutate the world directly. They enqueue <see cref="IAgentAction"/>s
+/// into a thread-safe buffer that the game loop drains via <see cref="ApplyActions"/>
+/// on the main thread. One step may enqueue many actions.
 /// </summary>
 public sealed class Agent
 {
-	private readonly AgentManager _manager;
-	private readonly List<ChatMessage> _history = [];
-	private readonly ChatOptions _options;
+    private readonly ChatOptions _options;
+    private readonly List<ChatMessage> _history = [];
+    private readonly ConcurrentQueue<IAgentAction> _pending = new();
 
-	public string Name { get; }
+    // Guard so a step that outlasts a tick isn't started again concurrently.
+    private int _stepping;
 
-	internal Agent(AgentManager manager, string name, string persona, IList<AITool> tools)
-	{
-		_manager = manager;
-		Name = name;
-		_history.Add(new ChatMessage(ChatRole.System, persona));
-		_options = new ChatOptions { Tools = tools };
-	}
+    internal Agent(string persona, IReadOnlyList<IAgentTool> tools)
+    {
+        _history.Add(new ChatMessage(ChatRole.System, persona));
+        _options = new ChatOptions { Tools = tools.Select(tool => tool.Build(this)).ToList() };
+    }
 
-	/// <summary>
-	/// Advance one turn: feed an observation, let the model reason and call
-	/// tools (executed by the function-invocation middleware), and return its
-	/// final text. Tool calls and results are persisted to history.
-	/// </summary>
-	public async Task<string> StepAsync(string observation, CancellationToken ct = default)
-	{
-		var client = _manager.Client
-			?? throw new InvalidOperationException("AI is not configured; see the settings UI.");
+    /// <summary>
+    /// Buffer an action for the game loop to apply. Called from tool delegates,
+    /// which run off the main thread; the queue is the thread-safe handoff.
+    /// </summary>
+    internal void Enqueue(IAgentAction action) => _pending.Enqueue(action);
 
-		_options.ModelId = _manager.Settings.Model;
-		_history.Add(new ChatMessage(ChatRole.User, observation));
+    /// <summary>
+    /// Advance one turn: feed an observation, let the model reason and call tools
+    /// (which buffer actions), and persist the exchange to history. Returns the
+    /// model's final text, or empty string if a previous step is still running.
+    /// </summary>
+    public async Task<string> StepAsync(CancellationToken ct = default)
+    {
+        if (Interlocked.Exchange(ref _stepping, 1) == 1)
+            return string.Empty;
 
-		ChatResponse response = await client.GetResponseAsync(_history, _options, ct);
+        try
+        {
+            var manager = AgentManager.Instance;
+            _options.ModelId = manager.Settings.Model;
+            _history.Add(new ChatMessage(ChatRole.User, "Decide your next action."));
 
-		// Append the assistant + any tool turns so the next step has context.
-		_history.AddRange(response.Messages);
-		return response.Text;
-	}
+            ChatResponse response = await manager.Client.GetResponseAsync(_history, _options, ct);
+            _history.AddMessages(response);
 
-	/// <summary>Drop history back to the persona, e.g. on respawn.</summary>
-	public void Reset()
-	{
-		var persona = _history[0];
-		_history.Clear();
-		_history.Add(persona);
-	}
+            return response.Text;
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _stepping, 0);
+        }
+    }
+
+    /// <summary>
+    /// Apply and clear all buffered actions. MUST be called on the game/main
+    /// thread (e.g. from <c>_Process</c>), since actions touch the scene tree.
+    /// </summary>
+    public void ApplyActions()
+    {
+        while (_pending.TryDequeue(out var action))
+            action.Apply();
+    }
+
+    /// <summary>Forget the conversation (keep the persona) and drop pending actions.</summary>
+    public void Reset()
+    {
+        var persona = _history[0];
+        _history.Clear();
+        _history.Add(persona);
+
+        while (_pending.TryDequeue(out _)) { }
+    }
 }

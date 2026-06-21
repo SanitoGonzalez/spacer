@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Godot;
@@ -20,16 +21,15 @@ namespace Spacer.AI;
 /// </summary>
 public partial class AgentManager : Node
 {
-	/// <summary>The autoloaded instance.</summary>
-	public static AgentManager Instance { get; private set; }
+	public static AgentManager Instance { get; private set; } = null!;
+	public AgentSettings Settings { get; private set; } = null!;
 
 	private readonly List<Agent> _agents = [];
 
 	/// <summary>Current configuration (provider, model, key, base URL).</summary>
-	public AgentSettings Settings { get; private set; }
 
 	/// <summary>The active client, or null until the AI is configured.</summary>
-	public IChatClient Client { get; private set; }
+	public IChatClient Client { get; private set; } = null!;
 
 	public override void _EnterTree()
 	{
@@ -44,9 +44,18 @@ public partial class AgentManager : Node
 
 	public override void _ExitTree()
 	{
-		Client?.Dispose();
-		if (Instance == this)
-			Instance = null;
+		Client.Dispose();
+	}
+
+	/// <summary>
+	/// Drain every agent's buffered actions on the main thread. Tool delegates run
+	/// off-thread and only enqueue; this is where their effects actually hit the
+	/// scene tree, in the order the model called them.
+	/// </summary>
+	public override void _Process(double delta)
+	{
+		foreach (var agent in _agents)
+			agent.ApplyActions();
 	}
 
 	/// <summary>
@@ -63,12 +72,11 @@ public partial class AgentManager : Node
 
 	private bool TryInitClient()
 	{
-		Client?.Dispose();
-		Client = null;
+		Client.Dispose();
 
 		if (!Settings.TryValidate(out var error))
 		{
-			GD.PushWarning($"AgentManager: AI not configured — {error} Agents are inert until configured.");
+			GD.PushWarning($"{nameof(AgentManager)}: AI not configured — {error} Agents are inert until configured.");
 			return false;
 		}
 
@@ -79,7 +87,7 @@ public partial class AgentManager : Node
 		}
 		catch (Exception e)
 		{
-			GD.PushError($"AgentManager: failed to create chat client — {e.Message}");
+			GD.PushError($"{nameof(AgentManager)}: failed to create chat client — {e.Message}");
 			return false;
 		}
 	}
@@ -87,48 +95,21 @@ public partial class AgentManager : Node
 	/// <summary>
 	/// Create an NPC agent with a persona and the actions it may take.
 	/// </summary>
-	public Agent CreateAgent(string name, string persona, IList<AITool> tools)
+	public Agent CreateAgent(string persona, IReadOnlyList<IAgentTool> tools)
 	{
-		var agent = new Agent(this, name, persona, tools);
+		var agent = new Agent(persona, tools);
 		_agents.Add(agent);
 		return agent;
 	}
 
 	/// <summary>
-	/// Example of defining a game action as a tool. Continuations after an await
-	/// run on Godot's main thread (Godot installs a SynchronizationContext), so
-	/// it is safe to touch the scene tree inside these.
-	/// </summary>
-	public static IList<AITool> BuildExampleTools(/* e.g. CharacterBody3D body */)
-	{
-		return new List<AITool>
-		{
-			AIFunctionFactory.Create(
-				(string direction) => $"Moved {direction}.",
-				name: "move",
-				description: "Move the NPC in a direction: north, south, east, or west."),
-
-			AIFunctionFactory.Create(
-				() => "You see an empty corridor.",
-				name: "look",
-				description: "Observe the NPC's immediate surroundings."),
-		};
-	}
-
-	/// <summary>
 	/// One agentic step for every active NPC. Call from a timer or game tick —
-	/// NOT from _Process every frame (each step is a network round-trip).
+	/// NOT from _Process every frame (each step is a network round-trip). Agents
+	/// already busy with a prior step skip this tick. Buffered actions land on the
+	/// main thread via <see cref="_Process"/>, not here.
 	/// </summary>
 	public async Task TickAsync(CancellationToken ct = default)
 	{
-		if (Client is null)
-			return;
-
-		foreach (var agent in _agents)
-		{
-			// TODO: build a real observation for this NPC from game state.
-			string reply = await agent.StepAsync("Describe what you do next.", ct);
-			GD.Print($"[{agent.Name}] {reply}");
-		}
+		await Task.WhenAll(_agents.Select(a => a.StepAsync(ct)));
 	}
 }
